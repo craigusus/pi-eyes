@@ -106,6 +106,8 @@ The iris is an **unwrapped texture, not a picture of an eye**. The top edge meet
 
 The left eye's texture is offset by half its width, so the two eyes don't look identical.
 
+[graphics/](graphics/) holds copies of Adafruit's original files to use as templates. They're for reference only: installed styles are built from `/opt/Pi_Eyes/graphics`, so changing them here doesn't affect the eyes. They're covered by Adafruit's licence in [graphics/LICENSE](graphics/LICENSE), not this repo's.
+
 ### Adding a style over SSH
 
 For a custom shape, create `/var/lib/pi-eyes/styles/<name>/graphics/` with these four files, using a name made of lowercase letters, digits and hyphens:
