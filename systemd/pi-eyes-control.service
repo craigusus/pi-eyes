@@ -1,0 +1,20 @@
+[Unit]
+Description=Pi Eyes style control (web UI and MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi-eyes
+Group=pi-eyes
+Environment=PYTHONPATH=/opt/pi-eyes-control/control
+ExecStart=/opt/pi-eyes-control/venv/bin/python -m pi_eyes_control --config /etc/pi-eyes/control.toml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pi-eyes
+
+[Install]
+WantedBy=multi-user.target

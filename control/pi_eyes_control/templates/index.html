@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Eyes</title>
+<style>
+  :root { color-scheme: dark; --bg: #14161a; --panel: #1f2329; --text: #eceef1; --muted: #9aa3ad; --accent: #6db3f2; --error: #ff8f8f; }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 720px; padding: 16px; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  #status { color: var(--muted); margin: 4px 0 16px; min-height: 1.45em; }
+  #status.error, #upload-error { color: var(--error); }
+  #styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .card { position: relative; }
+  .pick { display: block; width: 100%; padding: 12px; background: var(--panel); border: 2px solid transparent; border-radius: 12px; color: inherit; font: inherit; cursor: pointer; }
+  .pick:hover, .pick:focus-visible { border-color: var(--muted); }
+  .card.active .pick { border-color: var(--accent); }
+  .card.waiting .pick { border-style: dashed; border-color: var(--accent); }
+  .pick img { display: block; width: 100%; aspect-ratio: 1; border-radius: 50%; }
+  .pick span { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+  .remove { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; padding: 0; background: var(--bg); border: 1px solid var(--muted); border-radius: 50%; color: var(--text); cursor: pointer; }
+  form { margin-top: 24px; padding: 16px; background: var(--panel); border-radius: 12px; }
+  form p { margin: 0 0 12px; color: var(--muted); font-size: .9rem; }
+  label { display: block; margin-bottom: 12px; }
+  input, select { display: block; width: 100%; margin-top: 4px; padding: 8px; background: var(--bg); border: 1px solid var(--muted); border-radius: 8px; color: inherit; font: inherit; }
+  button[type=submit] { padding: 10px 16px; background: var(--accent); border: 0; border-radius: 8px; color: #10202e; font: inherit; font-weight: 600; cursor: pointer; }
+  #upload-error { margin-top: 8px; min-height: 1.45em; }
+</style>
+</head>
+<body>
+<h1>Pi Eyes</h1>
+<div id="status" role="status"></div>
+<div id="styles"></div>
+
+<form id="upload">
+  <h2>Add a style</h2>
+  <p>Images must be square JPEGs or PNGs. The iris is an unwrapped texture, not a picture of an eye: the top edge meets the pupil, the bottom edge is the outside of the iris, and left to right runs once around the eye. A normal photo will come out swirled.</p>
+  <label>Name (lowercase letters, digits, hyphens)
+    <input name="name" required maxlength="32" pattern="[a-z0-9\-]+" autocomplete="off">
+  </label>
+  <label>Iris image
+    <input name="iris" type="file" accept="image/jpeg,image/png" required>
+  </label>
+  <label>Sclera image (optional; keep its transparency)
+    <input name="sclera" type="file" accept="image/jpeg,image/png">
+  </label>
+  <label>Eye shape and default sclera from
+    <select name="shape" id="shape"></select>
+  </label>
+  <button type="submit">Add style</button>
+  <div id="upload-error" role="alert"></div>
+</form>
+
+<script>
+const stylesEl = document.getElementById("styles");
+const statusEl = document.getElementById("status");
+const shapeEl = document.getElementById("shape");
+const uploadEl = document.getElementById("upload");
+const uploadErrorEl = document.getElementById("upload-error");
+let known = "";
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed (${response.status})`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function showStatus(text, isError) {
+  statusEl.textContent = text;
+  statusEl.className = isError ? "error" : "";
+}
+
+function renderStyles(styles) {
+  stylesEl.replaceChildren(...styles.map(({name, uploaded}) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.name = name;
+
+    const pick = document.createElement("button");
+    pick.className = "pick";
+    pick.type = "button";
+    const image = document.createElement("img");
+    image.src = `/api/styles/${encodeURIComponent(name)}/preview`;
+    image.alt = "";
+    const label = document.createElement("span");
+    label.textContent = name;
+    pick.append(image, label);
+    pick.addEventListener("click", () => select(name));
+    card.append(pick);
+
+    if (uploaded) {
+      const remove = document.createElement("button");
+      remove.className = "remove";
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Delete ${name}`);
+      remove.addEventListener("click", () => removeStyle(name));
+      card.append(remove);
+    }
+    return card;
+  }));
+
+  const current = shapeEl.value;
+  shapeEl.replaceChildren(...styles.filter(s => !s.uploaded).map(({name}) => new Option(name, name)));
+  shapeEl.value = current || "default";
+}
+
+function renderSelection({requested, active}) {
+  for (const card of stylesEl.children) {
+    const name = card.dataset.name;
+    card.classList.toggle("active", name === active && name === requested);
+    card.classList.toggle("waiting", name === requested && name !== active);
+  }
+  if (!active) showStatus("The eyes are not running.", true);
+  else if (requested === active) showStatus(`Showing ${active}`);
+  else showStatus(`Showing ${active}. ${requested} was selected: it is starting, or it failed and the eyes fell back.`);
+}
+
+async function refresh() {
+  try {
+    const {styles} = await api("/api/styles");
+    const signature = JSON.stringify(styles);
+    if (signature !== known) {
+      known = signature;
+      renderStyles(styles);
+    }
+    renderSelection(await api("/api/style"));
+  } catch (err) {
+    showStatus(err.message, true);
+  }
+}
+
+async function select(name) {
+  try {
+    renderSelection(await api("/api/style", {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({style: name}),
+    }));
+  } catch (err) {
+    showStatus(err.message, true);
+  }
+}
+
+async function removeStyle(name) {
+  if (!confirm(`Delete ${name}?`)) return;
+  try {
+    await api(`/api/styles/${encodeURIComponent(name)}`, {method: "DELETE"});
+    await refresh();
+  } catch (err) {
+    showStatus(err.message, true);
+  }
+}
+
+uploadEl.addEventListener("submit", async event => {
+  event.preventDefault();
+  uploadErrorEl.textContent = "";
+  try {
+    await api("/api/styles", {method: "POST", body: new FormData(uploadEl)});
+    uploadEl.reset();
+    await refresh();
+  } catch (err) {
+    uploadErrorEl.textContent = err.message;
+  }
+});
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

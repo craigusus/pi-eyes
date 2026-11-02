@@ -1,0 +1,16 @@
+# Installed to /etc/pi-eyes/control.toml. Restart pi-eyes-control after editing.
+
+[web]
+host = "0.0.0.0"
+port = 8080
+
+[state]
+dir = "/var/lib/pi-eyes"
+
+[mqtt]
+# Leave host empty to run without Home Assistant.
+host = ""
+port = 1883
+username = ""
+password = ""
+discovery_prefix = "homeassistant"

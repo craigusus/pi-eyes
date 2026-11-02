@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Deployed to Linux, so these must stay LF even when checked out on Windows
+*.sh text eol=lf
+*.py text eol=lf
+*.service text eol=lf
+*.conf text eol=lf
+*.toml text eol=lf
