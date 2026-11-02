@@ -1,11 +1,12 @@
 import os
+import subprocess
 import sys
 import time
 
 import pytest
 
 from conftest import make_style
-from eyes_supervisor import HEALTHY_AFTER, Supervisor
+from eyes_supervisor import HEALTHY_AFTER, RUN_EYES, Supervisor
 
 
 class FakeChild:
@@ -82,7 +83,7 @@ def test_starts_default_with_no_selection(harness):
     harness.tick()
     assert harness.started() == ["default"]
     assert harness.active == "default"
-    assert harness.commands[0] == ["python", "/opt/Pi_Eyes/eyes.py", "--radius", "240"]
+    assert harness.commands[0] == ["python", RUN_EYES, "/opt/Pi_Eyes/eyes.py", "--radius", "240"]
 
 
 def test_restores_selected_style_at_boot(harness):
@@ -228,6 +229,35 @@ def test_active_style_is_readable_by_the_control_service(harness):
     if os.name == "posix":
         assert (harness.state_dir / "active-style").stat().st_mode & 0o044 == 0o044
     assert not list(harness.state_dir.glob(".*tmp"))
+
+
+def test_textures_load_from_the_style_not_the_eyes_folder(tmp_path):
+    """Finds files the way pi3d.Texture does, by searching sys.path. Adafruit's
+    folder also has a graphics/iris.jpg, which must not win."""
+    eyes_dir = tmp_path / "Pi_Eyes"
+    (eyes_dir / "graphics").mkdir(parents=True)
+    (eyes_dir / "graphics" / "iris.jpg").write_text("adafruit")
+    (eyes_dir / "helper.py").write_text("VALUE = 'imported'\n")
+    (eyes_dir / "eyes.py").write_text(
+        "import os, sys\n"
+        "from helper import VALUE\n"
+        "def texture(name):\n"
+        "    for p in sys.path:\n"
+        "        path = os.path.join(p, name)\n"
+        "        if os.path.isfile(path):\n"
+        "            return open(path).read()\n"
+        "print(texture('graphics/iris.jpg'), VALUE, sys.argv[1:], __name__)\n"
+        "sys.exit(7)\n")
+    style = tmp_path / "blue" / "graphics"
+    style.mkdir(parents=True)
+    (style / "iris.jpg").write_text("blue")
+
+    result = subprocess.run(
+        [sys.executable, RUN_EYES, str(eyes_dir / "eyes.py"), "--radius", "128"],
+        cwd=style.parent, capture_output=True, text=True, timeout=30)
+
+    assert result.stdout.strip() == "blue imported ['--radius', '128'] __main__"
+    assert result.returncode == 7  # The supervisor relies on this to spot failures
 
 
 def test_real_child_runs_in_style_folder_and_switches(tmp_path):

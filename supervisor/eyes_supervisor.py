@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Runs Adafruit's eyes.py from the folder of the selected style.
 
-eyes.py loads graphics/... relative to its working directory, so each style is
-a folder holding its own graphics/ and eyes.py needs no changes. A style change
-restarts only eyes.py. A style that dies at startup falls back to the last good
-one, so a bad style can't leave the eyes dead.
+Each style is a folder holding its own graphics/, and run_eyes.py makes eyes.py
+load from there, so eyes.py needs no changes. A style change restarts only
+eyes.py. A style that dies at startup falls back to the last good one, so a bad
+style can't leave the eyes dead.
 
 Standard library only: this runs under Adafruit's Python venv.
 """
@@ -21,6 +21,7 @@ from pathlib import Path
 
 log = logging.getLogger("eyes_supervisor")
 
+RUN_EYES = str(Path(__file__).with_name("run_eyes.py"))
 DEFAULT_STYLE = "default"
 REQUIRED_FILES = ("eye.svg", "iris.jpg", "sclera.png", "lid.png")
 NAME_RE = re.compile(r"[a-z0-9-]{1,32}")
@@ -91,7 +92,8 @@ class Supervisor:
             if folder is None:
                 log.warning("Style %r is missing or incomplete", name)
                 continue
-            command = [self.python, self.eyes, "--radius", str(self.radius)]
+            command = [self.python, RUN_EYES, self.eyes,
+                       "--radius", str(self.radius)]
             try:
                 self.child = self.spawn(command, cwd=folder)
             except OSError as err:
